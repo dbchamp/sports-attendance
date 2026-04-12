@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>스포츠클럽 출석체크</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      color: white;
+      padding: 24px 20px 20px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .header h1 { font-size: 26px; margin-bottom: 6px; }
+    .header .date-info { font-size: 17px; opacity: 0.85; margin-bottom: 4px; }
+    .header .sport-info {
+      font-size: 22px;
+      font-weight: bold;
+      background: rgba(255,255,255,0.2);
+      display: inline-block;
+      padding: 6px 20px;
+      border-radius: 20px;
+      margin-top: 8px;
+    }
+    .no-schedule {
+      text-align: center;
+      padding: 80px 20px;
+      color: #666;
+      font-size: 22px;
+    }
+    .student-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .student-btn {
+      background: white;
+      border: 3px solid #e0e0e0;
+      border-radius: 14px;
+      padding: 18px 10px;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      color: #333;
+      min-height: 90px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .student-btn .sub {
+      font-size: 12px;
+      color: #999;
+      font-weight: normal;
+    }
+    .student-btn:active { transform: scale(0.96); }
+    .student-btn.checked {
+      background: #e8f5e9;
+      border-color: #4caf50;
+      color: #2e7d32;
+    }
+    .student-btn.checked .check-label {
+      font-size: 13px;
+      color: #4caf50;
+    }
+    .toast {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #323232;
+      color: white;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 18px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+    .admin-link {
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      background: rgba(255,255,255,0.25);
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .loading {
+      text-align: center;
+      padding: 80px;
+      font-size: 18px;
+      color: #888;
+    }
+    .count-bar {
+      text-align: center;
+      padding: 12px;
+      font-size: 16px;
+      color: #555;
+      background: white;
+      border-bottom: 1px solid #eee;
+    }
+    .count-bar span { color: #1a73e8; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>스포츠클럽 출석체크</h1>
+  <div class="date-info" id="dateInfo"></div>
+  <div id="sportWrap"></div>
+</div>
+
+<div id="countBar" class="count-bar" style="display:none"></div>
+<div id="content"><div class="loading">불러오는 중...</div></div>
+<div class="toast" id="toast"></div>
+<button class="admin-link" onclick="location.href='admin.html'">관리자</button>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyCIMDXIw04shM23-VdEHWoS4nlCXiFcWk8",
+    authDomain: "sports-attendance-a9adb.firebaseapp.com",
+    databaseURL: "https://sports-attendance-a9adb-default-rtdb.firebaseio.com",
+    projectId: "sports-attendance-a9adb",
+    storageBucket: "sports-attendance-a9adb.firebasestorage.app",
+    messagingSenderId: "524036192988",
+    appId: "1:524036192988:web:12a896f149d55ea9db9219"
+  });
+  const db = firebase.database();
+
+  const DAY_KEYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const DAY_NAMES = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
+
+  const today = new Date();
+  const dayIdx = today.getDay();
+  const dayKey = DAY_KEYS[dayIdx];
+  const dateStr = today.toISOString().slice(0,10);
+
+  document.getElementById('dateInfo').textContent =
+    `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일 ${DAY_NAMES[dayIdx]}`;
+
+  let todaySchedule = null;
+  let students = [];
+  let attendanceData = {};
+
+  db.ref(`/schedule/${dayKey}`).once('value').then(snap => {
+    todaySchedule = snap.val();
+
+    if (!todaySchedule || !todaySchedule.sport || dayIdx === 0 || dayIdx === 6) {
+      document.getElementById('sportWrap').innerHTML = '';
+      document.getElementById('content').innerHTML =
+        '<div class="no-schedule">🏖️ 오늘은 스포츠클럽이 없어요</div>';
+      return;
+    }
+
+    document.getElementById('sportWrap').innerHTML =
+      `<div class="sport-info">${todaySchedule.sport} · ${todaySchedule.duration}분</div>`;
+
+    db.ref(`/attendance/${dateStr}`).on('value', snap => {
+      attendanceData = snap.val() || {};
+      loadStudents();
+    });
+  });
+
+  function loadStudents() {
+    db.ref('/students').once('value').then(snap => {
+      const data = snap.val();
+      if (!data) {
+        document.getElementById('content').innerHTML =
+          '<div class="no-schedule">등록된 학생이 없습니다.<br>관리자에서 학생을 등록해 주세요.</div>';
+        return;
+      }
+      students = Object.entries(data).map(([id, s]) => ({ id, ...s }));
+      students.sort((a,b) => {
+        if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+        if (a.class !== b.class) return Number(a.class) - Number(b.class);
+        return Number(a.number) - Number(b.number);
+      });
+      renderStudents();
+    });
+  }
+
+  function renderStudents() {
+    const checkedCount = Object.keys(attendanceData).length;
+    const countBar = document.getElementById('countBar');
+    countBar.style.display = 'block';
+    countBar.innerHTML = `오늘 출석 <span>${checkedCount}</span> / ${students.length}명`;
+
+    const grid = document.createElement('div');
+    grid.className = 'student-grid';
+
+    students.forEach(student => {
+      const btn = document.createElement('button');
+      btn.className = 'student-btn' + (attendanceData[student.id] ? ' checked' : '');
+      btn.innerHTML = `
+        <span>${student.name}</span>
+        <span class="sub">${student.grade}학년 ${student.class}반 ${student.number}번</span>
+        ${attendanceData[student.id] ? '<span class="check-label">✓ 출석완료</span>' : ''}
+      `;
+      btn.onclick = () => checkAttendance(student, btn);
+      grid.appendChild(btn);
+    });
+
+    document.getElementById('content').innerHTML = '';
+    document.getElementById('content').appendChild(grid);
+  }
+
+  function checkAttendance(student, btn) {
+    if (attendanceData[student.id]) {
+      showToast(`${student.name} 학생은 이미 출석했어요!`);
+      return;
+    }
+    const record = {
+      name: student.name,
+      grade: student.grade,
+      class: student.class,
+      number: student.number,
+      sport: todaySchedule.sport,
+      duration: todaySchedule.duration,
+      activityType: todaySchedule.activityType || '스포츠클럽',
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      date: dateStr
+    };
+    db.ref(`/attendance/${dateStr}/${student.id}`).set(record).then(() => {
+      showToast(`✓ ${student.name} 출석 완료!`);
+    });
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+</script>
+</body>
+</html>

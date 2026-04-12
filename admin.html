@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>관리자 페이지</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+    }
+
+    /* 로그인 화면 */
+    .login-overlay {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    .login-box {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 36px;
+      text-align: center;
+      width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .login-box h2 { font-size: 22px; margin-bottom: 24px; color: #333; }
+    .login-box input {
+      width: 100%; padding: 14px; font-size: 20px;
+      border: 2px solid #e0e0e0; border-radius: 8px;
+      text-align: center; letter-spacing: 6px; margin-bottom: 16px;
+    }
+    .login-box button {
+      width: 100%; padding: 14px; font-size: 18px;
+      background: #1a73e8; color: white; border: none;
+      border-radius: 8px; cursor: pointer;
+    }
+    .login-box .error { color: #e53935; font-size: 14px; margin-top: 10px; }
+
+    /* 메인 레이아웃 */
+    .top-bar {
+      background: #1a73e8;
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar h1 { font-size: 20px; }
+    .top-bar a { color: white; font-size: 14px; text-decoration: none; opacity: 0.85; }
+
+    .tabs {
+      display: flex;
+      background: white;
+      border-bottom: 2px solid #e0e0e0;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 14px 20px;
+      font-size: 15px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #666;
+      white-space: nowrap;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: bold; }
+
+    .tab-panel { display: none; padding: 24px 20px; max-width: 900px; margin: 0 auto; }
+    .tab-panel.active { display: block; }
+
+    /* 공통 컴포넌트 */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .card h3 { font-size: 17px; margin-bottom: 16px; color: #333; }
+
+    .form-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .form-row input, .form-row select {
+      flex: 1; min-width: 80px;
+      padding: 10px 12px; font-size: 15px;
+      border: 2px solid #e0e0e0; border-radius: 8px;
+    }
+    .btn {
+      padding: 10px 20px; font-size: 15px;
+      border: none; border-radius: 8px; cursor: pointer;
+    }
+    .btn-primary { background: #1a73e8; color: white; }
+    .btn-danger { background: #e53935; color: white; }
+    .btn-success { background: #43a047; color: white; }
+    .btn-gray { background: #e0e0e0; color: #333; }
+
+    /* 학생 목록 */
+    .student-list { margin-top: 16px; }
+    .student-item {
+      display: flex; align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 15px;
+    }
+    .student-item:last-child { border-bottom: none; }
+    .student-item span { flex: 1; }
+    .student-item button { margin-left: 8px; }
+
+    /* 시간표 */
+    .schedule-grid { display: grid; gap: 12px; }
+    .schedule-row {
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
+    .schedule-day {
+      width: 50px; font-weight: bold; color: #1a73e8; flex-shrink: 0;
+    }
+    .schedule-row input, .schedule-row select {
+      flex: 1; min-width: 100px;
+      padding: 9px 12px; font-size: 14px;
+      border: 2px solid #e0e0e0; border-radius: 8px;
+    }
+
+    /* 출석 현황 */
+    .attendance-table {
+      width: 100%; border-collapse: collapse; margin-top: 12px;
+    }
+    .attendance-table th {
+      background: #f5f5f5; padding: 10px 12px;
+      text-align: left; font-size: 14px; border-bottom: 2px solid #e0e0e0;
+    }
+    .attendance-table td {
+      padding: 9px 12px; font-size: 14px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .attendance-table tr:hover td { background: #f9f9f9; }
+
+    .empty-msg { color: #888; text-align: center; padding: 30px; font-size: 15px; }
+
+    /* 내보내기 */
+    .export-form label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
+    .export-form input {
+      width: 100%; padding: 10px; font-size: 15px;
+      border: 2px solid #e0e0e0; border-radius: 8px; margin-bottom: 12px;
+    }
+    .summary-box {
+      background: #e8f5e9; border-radius: 8px; padding: 14px;
+      font-size: 14px; margin-top: 12px; color: #2e7d32;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>관리자 로그인</h2>
+    <input type="password" id="pwInput" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">로그인</button>
+    <div class="error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div id="mainContent" style="display:none">
+  <div class="top-bar">
+    <h1>스포츠클럽 관리</h1>
+    <a href="index.html">← 출석 화면으로</a>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('students')">학생 관리</button>
+    <button class="tab-btn" onclick="showTab('schedule')">시간표 설정</button>
+    <button class="tab-btn" onclick="showTab('attendance')">출석 현황</button>
+    <button class="tab-btn" onclick="showTab('export')">엑셀 내보내기</button>
+    <button class="tab-btn" onclick="showTab('settings')">설정</button>
+  </div>
+
+  <!-- 학생 관리 탭 -->
+  <div class="tab-panel active" id="tab-students">
+    <div class="card">
+      <h3>학생 추가</h3>
+      <div class="form-row">
+        <input type="text" id="sName" placeholder="이름" style="max-width:120px">
+        <input type="number" id="sGrade" placeholder="학년" min="1" max="6" style="max-width:80px">
+        <input type="number" id="sClass" placeholder="반" min="1" max="20" style="max-width:80px">
+        <input type="number" id="sNum" placeholder="번호" min="1" max="50" style="max-width:80px">
+        <button class="btn btn-primary" onclick="addStudent()">추가</button>
+      </div>
+      <small style="color:#888">여러 명 추가 시 한 명씩 입력해 주세요.</small>
+    </div>
+    <div class="card">
+      <h3>학생 목록</h3>
+      <div class="student-list" id="studentList"><div class="empty-msg">등록된 학생이 없습니다.</div></div>
+    </div>
+  </div>
+
+  <!-- 시간표 탭 -->
+  <div class="tab-panel" id="tab-schedule">
+    <div class="card">
+      <h3>요일별 종목 및 시간 설정</h3>
+      <div class="schedule-grid" id="scheduleGrid"></div>
+      <br>
+      <button class="btn btn-primary" onclick="saveSchedule()">저장</button>
+    </div>
+  </div>
+
+  <!-- 출석 현황 탭 -->
+  <div class="tab-panel" id="tab-attendance">
+    <div class="card">
+      <div class="form-row">
+        <input type="date" id="attDate" style="flex:none;width:180px">
+        <button class="btn btn-primary" onclick="loadAttendance()">조회</button>
+        <button class="btn btn-danger" onclick="deleteAttendance()">오늘 출석 전체 삭제</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="attendanceResult"><div class="empty-msg">날짜를 선택하고 조회해 주세요.</div></div>
+    </div>
+  </div>
+
+  <!-- 내보내기 탭 -->
+  <div class="tab-panel" id="tab-export">
+    <div class="card">
+      <h3>엑셀 다운로드</h3>
+      <div class="export-form">
+        <label>시작 날짜</label>
+        <input type="date" id="exportFrom">
+        <label>종료 날짜</label>
+        <input type="date" id="exportTo">
+        <button class="btn btn-success" onclick="exportExcel()" style="width:100%;padding:14px;font-size:16px">
+          엑셀 다운로드
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설정 탭 -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="card">
+      <h3>비밀번호 변경</h3>
+      <div class="form-row">
+        <input type="password" id="newPw" placeholder="새 비밀번호">
+        <input type="password" id="newPwConfirm" placeholder="비밀번호 확인">
+        <button class="btn btn-primary" onclick="changePw()">변경</button>
+      </div>
+      <div id="pwMsg" style="margin-top:8px;font-size:14px;color:green"></div>
+    </div>
+    <div class="card">
+      <h3>전체 출석 데이터 삭제</h3>
+      <p style="color:#888;font-size:14px;margin-bottom:12px">모든 날짜의 출석 기록이 삭제됩니다. 신중히 사용해 주세요.</p>
+      <button class="btn btn-danger" onclick="deleteAllAttendance()">전체 삭제</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyCIMDXIw04shM23-VdEHWoS4nlCXiFcWk8",
+    authDomain: "sports-attendance-a9adb.firebaseapp.com",
+    databaseURL: "https://sports-attendance-a9adb-default-rtdb.firebaseio.com",
+    projectId: "sports-attendance-a9adb",
+    storageBucket: "sports-attendance-a9adb.firebasestorage.app",
+    messagingSenderId: "524036192988",
+    appId: "1:524036192988:web:12a896f149d55ea9db9219"
+  });
+  const db = firebase.database();
+
+  const DEFAULT_PW = '1234';
+  const DAY_KEYS = ['monday','tuesday','wednesday','thursday','friday'];
+  const DAY_NAMES = ['월요일','화요일','수요일','목요일','금요일'];
+  const ACTIVITY_TYPES = ['스포츠클럽', '점심 틈새운동', '방과후'];
+
+  // --- 로그인 ---
+  async function doLogin() {
+    const input = document.getElementById('pwInput').value;
+    const snap = await db.ref('/settings/adminPassword').once('value');
+    const saved = snap.val() || DEFAULT_PW;
+    if (input === saved) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      initApp();
+    } else {
+      document.getElementById('loginError').textContent = '비밀번호가 틀렸습니다.';
+    }
+  }
+
+  // --- 초기화 ---
+  function initApp() {
+    loadStudentList();
+    loadScheduleForm();
+    // 오늘 날짜 기본값
+    const today = new Date().toISOString().slice(0,10);
+    document.getElementById('attDate').value = today;
+    document.getElementById('exportFrom').value = today;
+    document.getElementById('exportTo').value = today;
+  }
+
+  // --- 탭 전환 ---
+  function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-'+name).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  // --- 학생 관리 ---
+  function addStudent() {
+    const name = document.getElementById('sName').value.trim();
+    const grade = document.getElementById('sGrade').value;
+    const cls = document.getElementById('sClass').value;
+    const num = document.getElementById('sNum').value;
+    if (!name || !grade || !cls || !num) { alert('모든 항목을 입력해 주세요.'); return; }
+    db.ref('/students').push({ name, grade, class: cls, number: num }).then(() => {
+      document.getElementById('sName').value = '';
+      document.getElementById('sNum').value = '';
+    });
+  }
+
+  function loadStudentList() {
+    db.ref('/students').on('value', snap => {
+      const data = snap.val();
+      const list = document.getElementById('studentList');
+      if (!data) { list.innerHTML = '<div class="empty-msg">등록된 학생이 없습니다.</div>'; return; }
+      const students = Object.entries(data).map(([id,s]) => ({id,...s}));
+      students.sort((a,b) => {
+        if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+        if (a.class !== b.class) return Number(a.class) - Number(b.class);
+        return Number(a.number) - Number(b.number);
+      });
+      list.innerHTML = students.map(s =>
+        `<div class="student-item">
+          <span>${s.grade}학년 ${s.class}반 ${s.number}번 &nbsp;<strong>${s.name}</strong></span>
+          <button class="btn btn-danger" style="padding:6px 12px;font-size:13px" onclick="deleteStudent('${s.id}','${s.name}')">삭제</button>
+        </div>`
+      ).join('');
+    });
+  }
+
+  function deleteStudent(id, name) {
+    if (!confirm(`${name} 학생을 삭제할까요?`)) return;
+    db.ref(`/students/${id}`).remove();
+  }
+
+  // --- 시간표 ---
+  function loadScheduleForm() {
+    db.ref('/schedule').once('value').then(snap => {
+      const data = snap.val() || {};
+      const grid = document.getElementById('scheduleGrid');
+      grid.innerHTML = DAY_KEYS.map((key, i) => {
+        const s = data[key] || {};
+        const typeOptions = ACTIVITY_TYPES.map(t =>
+          `<option value="${t}" ${s.activityType===t?'selected':''}>${t}</option>`
+        ).join('');
+        return `
+          <div class="schedule-row">
+            <div class="schedule-day">${DAY_NAMES[i]}</div>
+            <input type="text" id="sport_${key}" placeholder="종목 (예: 배드민턴)" value="${s.sport||''}">
+            <select id="type_${key}">${typeOptions}</select>
+            <input type="number" id="dur_${key}" placeholder="분" min="1" max="120" value="${s.duration||45}" style="max-width:80px">
+          </div>
+        `;
+      }).join('');
+    });
+  }
+
+  function saveSchedule() {
+    const updates = {};
+    DAY_KEYS.forEach(key => {
+      updates[key] = {
+        sport: document.getElementById(`sport_${key}`).value.trim(),
+        activityType: document.getElementById(`type_${key}`).value,
+        duration: Number(document.getElementById(`dur_${key}`).value)
+      };
+    });
+    db.ref('/schedule').set(updates).then(() => alert('시간표가 저장되었습니다.'));
+  }
+
+  // --- 출석 현황 ---
+  async function loadAttendance() {
+    const date = document.getElementById('attDate').value;
+    if (!date) { alert('날짜를 선택해 주세요.'); return; }
+    const snap = await db.ref(`/attendance/${date}`).once('value');
+    const data = snap.val();
+    const result = document.getElementById('attendanceResult');
+    if (!data) {
+      result.innerHTML = '<div class="empty-msg">해당 날짜의 출석 기록이 없습니다.</div>';
+      return;
+    }
+    const records = Object.values(data).sort((a,b) => {
+      if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+      if (a.class !== b.class) return Number(a.class) - Number(b.class);
+      return Number(a.number) - Number(b.number);
+    });
+    result.innerHTML = `
+      <p style="margin-bottom:10px;color:#555;font-size:14px">총 ${records.length}명 출석</p>
+      <table class="attendance-table">
+        <tr><th>학년</th><th>반</th><th>번호</th><th>이름</th><th>종목</th><th>활동유형</th><th>시간</th></tr>
+        ${records.map(r => `
+          <tr>
+            <td>${r.grade}학년</td><td>${r.class}반</td><td>${r.number}번</td>
+            <td><strong>${r.name}</strong></td>
+            <td>${r.sport}</td><td>${r.activityType||'-'}</td><td>${r.duration}분</td>
+          </tr>
+        `).join('')}
+      </table>
+    `;
+  }
+
+  async function deleteAttendance() {
+    const date = document.getElementById('attDate').value;
+    if (!date) { alert('날짜를 선택해 주세요.'); return; }
+    if (!confirm(`${date} 출석 기록을 전체 삭제할까요?`)) return;
+    await db.ref(`/attendance/${date}`).remove();
+    alert('삭제되었습니다.');
+    document.getElementById('attendanceResult').innerHTML = '<div class="empty-msg">출석 기록이 삭제되었습니다.</div>';
+  }
+
+  // --- 엑셀 내보내기 ---
+  async function exportExcel() {
+    const from = document.getElementById('exportFrom').value;
+    const to = document.getElementById('exportTo').value;
+    if (!from || !to) { alert('날짜를 선택해 주세요.'); return; }
+    if (from > to) { alert('시작 날짜가 종료 날짜보다 늦습니다.'); return; }
+
+    const snap = await db.ref('/attendance').once('value');
+    const all = snap.val() || {};
+
+    const rows = [['날짜','학년','반','번호','이름','종목','활동유형','활동시간(분)']];
+    const dates = Object.keys(all).filter(d => d >= from && d <= to).sort();
+
+    dates.forEach(date => {
+      const records = Object.values(all[date]).sort((a,b) => {
+        if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+        if (a.class !== b.class) return Number(a.class) - Number(b.class);
+        return Number(a.number) - Number(b.number);
+      });
+      records.forEach(r => {
+        rows.push([date, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.sport, r.activityType||'-', r.duration]);
+      });
+    });
+
+    if (rows.length === 1) { alert('해당 기간에 출석 기록이 없습니다.'); return; }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [12,8,6,8,10,12,14,14].map(w => ({wch:w}));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '출석기록');
+    XLSX.writeFile(wb, `스포츠클럽_출석_${from}_${to}.xlsx`);
+  }
+
+  // --- 설정 ---
+  async function changePw() {
+    const pw = document.getElementById('newPw').value;
+    const confirm2 = document.getElementById('newPwConfirm').value;
+    const msg = document.getElementById('pwMsg');
+    if (!pw) { msg.style.color='red'; msg.textContent='비밀번호를 입력해 주세요.'; return; }
+    if (pw !== confirm2) { msg.style.color='red'; msg.textContent='비밀번호가 일치하지 않습니다.'; return; }
+    await db.ref('/settings/adminPassword').set(pw);
+    msg.style.color='green'; msg.textContent='비밀번호가 변경되었습니다.';
+    document.getElementById('newPw').value = '';
+    document.getElementById('newPwConfirm').value = '';
+  }
+
+  async function deleteAllAttendance() {
+    if (!confirm('모든 출석 기록을 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
+    await db.ref('/attendance').remove();
+    alert('전체 출석 기록이 삭제되었습니다.');
+  }
+</script>
+</body>
+</html>
