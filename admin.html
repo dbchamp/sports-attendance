@@ -101,6 +101,7 @@
     <button class="tab-btn active" onclick="showTab('students', this)">학생 관리</button>
     <button class="tab-btn" onclick="showTab('schedule', this)">시간표 설정</button>
     <button class="tab-btn" onclick="showTab('attendance', this)">출석 현황</button>
+    <button class="tab-btn" onclick="showTab('inactive', this)">미출석 관리</button>
     <button class="tab-btn" onclick="showTab('export', this)">엑셀 내보내기</button>
     <button class="tab-btn" onclick="showTab('settings', this)">설정</button>
   </div>
@@ -201,6 +202,24 @@
     </div>
   </div>
 
+  <!-- 미출석 관리 -->
+  <div class="tab-panel" id="tab-inactive">
+    <div class="card">
+      <h3>⚠️ 미출석 학생 관리</h3>
+      <p style="font-size:13px;color:#888;margin-bottom:14px">선택한 기간 동안 한 번도 출석하지 않은 학생을 확인할 수 있어요.</p>
+      <div class="form-row">
+        <input type="date" id="inactiveFrom" style="flex:none;width:160px">
+        <span style="padding-top:9px;font-size:14px;color:#555">~</span>
+        <input type="date" id="inactiveTo" style="flex:none;width:160px">
+        <button class="btn btn-primary" onclick="loadInactive()">조회</button>
+      </div>
+      <div style="font-size:12px;color:#aaa;margin-top:4px">기본값: 최근 2주</div>
+    </div>
+    <div class="card">
+      <div id="inactiveResult"><div class="empty-msg">기간을 선택하고 조회해 주세요.</div></div>
+    </div>
+  </div>
+
   <!-- 엑셀 내보내기 -->
   <div class="tab-panel" id="tab-export">
     <div class="card">
@@ -275,9 +294,12 @@
     loadStudents();
     loadScheduleForm();
     const today = new Date().toISOString().slice(0,10);
+    const twoWeeksAgo = new Date(Date.now() - 14*24*60*60*1000).toISOString().slice(0,10);
     document.getElementById('attDate').value = today;
-    document.getElementById('exportFrom').value = today;
+    document.getElementById('exportFrom').value = twoWeeksAgo;
     document.getElementById('exportTo').value = today;
+    document.getElementById('inactiveFrom').value = twoWeeksAgo;
+    document.getElementById('inactiveTo').value = today;
   }
 
   function showTab(name, btn) {
@@ -485,6 +507,58 @@
     document.getElementById('attendanceResult').innerHTML = '<div class="empty-msg">삭제됐습니다.</div>';
   }
 
+  // 미출석 학생 조회
+  async function loadInactive() {
+    const from = document.getElementById('inactiveFrom').value;
+    const to = document.getElementById('inactiveTo').value;
+    if (!from || !to) { alert('기간을 선택해 주세요.'); return; }
+
+    const [attSnap] = await Promise.all([
+      db.ref('/attendance').once('value')
+    ]);
+    const all = attSnap.val() || {};
+
+    // 출석한 학생 ID 수집
+    const attended = new Set();
+    Object.entries(all).forEach(([date, sessions]) => {
+      if (date < from || date > to) return;
+      Object.values(sessions).forEach(clubs => {
+        Object.values(clubs).forEach(students => {
+          Object.keys(students).forEach(id => attended.add(id));
+        });
+      });
+    });
+
+    // 한 번도 안 온 학생
+    const inactive = allStudents.filter(s => !attended.has(s.id));
+    inactive.sort((a,b) => {
+      if ((a.club||'') !== (b.club||'')) return (a.club||'').localeCompare(b.club||'');
+      if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+      if (a.class !== b.class) return Number(a.class) - Number(b.class);
+      return Number(a.number) - Number(b.number);
+    });
+
+    const result = document.getElementById('inactiveResult');
+    if (!inactive.length) {
+      result.innerHTML = '<div class="empty-msg">✅ 모든 학생이 이 기간에 한 번 이상 출석했어요!</div>';
+      return;
+    }
+
+    result.innerHTML = `
+      <p style="margin-bottom:10px;color:#e53935;font-size:14px;font-weight:bold">⚠️ ${inactive.length}명이 미출석 상태예요 (${from} ~ ${to})</p>
+      <table class="att-table">
+        <tr><th>종목부</th><th>학년</th><th>반</th><th>번호</th><th>이름</th><th>처리</th></tr>
+        ${inactive.map(s => `
+          <tr>
+            <td style="color:#1a73e8">${s.club||'-'}</td>
+            <td>${s.grade}학년</td><td>${s.class}반</td><td>${s.number}번</td>
+            <td><b>${s.name}</b></td>
+            <td><button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteStudent('${s.id}','${s.name}')">삭제</button></td>
+          </tr>
+        `).join('')}
+      </table>`;
+  }
+
   // 엑셀 내보내기 (종목별 시트)
   async function exportExcel() {
     const from = document.getElementById('exportFrom').value;
@@ -517,10 +591,40 @@
       });
     });
 
-    if (!Object.keys(byClub).length) { alert('출석 기록이 없습니다.'); return; }
-
     const wb = XLSX.utils.book_new();
     const header = ['날짜','시간대','세션종목','학년','반','번호','이름','활동시간(분)'];
+
+    // 누가기록 요약 시트: 전체 학생 + 총 활동시간 (미출석 포함)
+    const summaryRows = [['종목부','학년','반','번호','이름','총 활동시간(분)','출석 횟수']];
+    const timeByStudent = {};
+    Object.values(byClub).flat().forEach(r => {
+      const key = `${r.grade}_${r.class}_${r.number}_${r.name}`;
+      if (!timeByStudent[key]) timeByStudent[key] = { total: 0, count: 0 };
+      timeByStudent[key].total += Number(r.duration) || 0;
+      timeByStudent[key].count += 1;
+    });
+
+    const sortedStudents = [...allStudents].sort((a,b) => {
+      if ((a.club||'') !== (b.club||'')) return (a.club||'').localeCompare(b.club||'');
+      if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+      if (a.class !== b.class) return Number(a.class) - Number(b.class);
+      return Number(a.number) - Number(b.number);
+    });
+
+    sortedStudents.forEach(s => {
+      const key = `${s.grade}_${s.class}_${s.number}_${s.name}`;
+      const stat = timeByStudent[key] || { total: 0, count: 0 };
+      summaryRows.push([s.club||'-', s.grade+'학년', s.class+'반', s.number+'번', s.name, stat.total, stat.count]);
+    });
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [14,8,6,8,10,16,10].map(w => ({wch:w}));
+    XLSX.utils.book_append_sheet(wb, wsSummary, '누가기록 요약');
+
+    if (!Object.keys(byClub).length) {
+      XLSX.writeFile(wb, `스포츠클럽_출석_${from}_${to}.xlsx`);
+      return;
+    }
 
     // 전체 합계 시트
     const allRows = [header];
