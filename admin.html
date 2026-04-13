@@ -368,6 +368,7 @@
       // 종목 셀렉트 업데이트
       const updateSelect = (id, placeholder='전체 종목') => {
         const sel = document.getElementById(id);
+        if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = `<option value="">${placeholder}</option>` +
           allClubs.map(c => `<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
