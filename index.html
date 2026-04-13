@@ -235,6 +235,17 @@
   <div class="student-grid" id="studentGrid"></div>
 </div>
 
+<!-- 취소 확인 팝업 -->
+<div id="confirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;padding:32px 28px;text-align:center;width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+    <p id="confirmMsg" style="font-size:18px;font-weight:bold;color:#333;margin-bottom:24px;line-height:1.5"></p>
+    <div style="display:flex;gap:12px;">
+      <button id="confirmNo" style="flex:1;padding:14px;font-size:16px;border:2px solid #e0e0e0;border-radius:10px;background:white;cursor:pointer;color:#555;">아니요</button>
+      <button id="confirmYes" style="flex:1;padding:14px;font-size:16px;border:none;border-radius:10px;background:#e53935;color:white;cursor:pointer;font-weight:bold;">취소하기</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <button class="admin-link" onclick="location.href='admin.html'">관리자</button>
 
@@ -409,7 +420,14 @@
 
   function checkAttendance(student) {
     if (attendanceData[student.id]) {
-      showToast(`${student.name} 학생은 이미 출석했어요!`);
+      // 이미 출석한 경우 취소 확인
+      showConfirm(
+        `${student.name} 학생의 출석을 취소할까요?`,
+        () => {
+          db.ref(`/attendance/${dateStr}/${currentSession}/${currentClub}/${student.id}`).remove()
+            .then(() => showToast(`${student.name} 출석이 취소됐어요.`));
+        }
+      );
       return;
     }
     const record = {
@@ -426,6 +444,20 @@
     };
     db.ref(`/attendance/${dateStr}/${currentSession}/${currentClub}/${student.id}`).set(record)
       .then(() => showToast(`✓ ${student.name} 출석 완료!`));
+  }
+
+  // 취소 확인 팝업
+  function showConfirm(msg, onConfirm) {
+    const overlay = document.getElementById('confirmOverlay');
+    document.getElementById('confirmMsg').textContent = msg;
+    overlay.style.display = 'flex';
+    document.getElementById('confirmYes').onclick = () => {
+      overlay.style.display = 'none';
+      onConfirm();
+    };
+    document.getElementById('confirmNo').onclick = () => {
+      overlay.style.display = 'none';
+    };
   }
 
   function showToast(msg) {
