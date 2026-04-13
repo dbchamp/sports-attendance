@@ -321,10 +321,9 @@
     const rawClubs = [...new Set(allStudents.map(s => s.club).filter(Boolean))].sort();
     const clubSet = new Set(rawClubs);
 
-    // 남+여 합반 옵션 자동 추가
+    // 배구부 남+여 합반 옵션만 추가 (축구는 제외)
     const combined = [];
     if (clubSet.has('배구부(남)') && clubSet.has('배구부(여)')) combined.push('배구부(남+여)');
-    if (clubSet.has('축구부(남)') && clubSet.has('축구부(여)')) combined.push('축구부(남+여)');
 
     const clubs = [...rawClubs, ...combined];
 
@@ -411,13 +410,20 @@
     return sport + '부';
   }
 
-  // 종목/클럽 이름으로 학생 필터링 (남+여 합반 처리 포함)
+  // 종목/클럽 이름으로 학생 필터링
   function getStudentsForClub(clubName) {
-    // 클럽명으로 변환
-    const name = sportToClub(clubName);
+    // 1. 정확히 일치하는 클럽명 먼저 찾기 (배드민턴(남+여) 등 단일 클럽)
+    const exact = allStudents.filter(s => s.club === clubName);
+    if (exact.length > 0) return exact;
 
-    if (name.includes('+')) {
-      const match = name.match(/^(.+?)\((.+)\)$/);
+    // 2. "부" 붙여서 찾기
+    const withBu = sportToClub(clubName);
+    const exactBu = allStudents.filter(s => s.club === withBu);
+    if (exactBu.length > 0) return exactBu;
+
+    // 3. 남+여 합반: "배구부(남+여)" → 배구부(남) + 배구부(여)
+    if (withBu.includes('+')) {
+      const match = withBu.match(/^(.+?)\((.+)\)$/);
       if (match) {
         const prefix = match[1];
         const variants = match[2].split('+');
@@ -426,7 +432,7 @@
         );
       }
     }
-    return allStudents.filter(s => s.club === name);
+    return [];
   }
 
   function checkAttendance(student) {
