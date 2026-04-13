@@ -496,16 +496,19 @@
 
     const dates = Object.keys(all).filter(d => d >= from && d <= to).sort();
 
-    // 종목별로 데이터 묶기
-    const byClub = {}; // { 종목명: [ row, ... ] }
+    // 학생의 실제 종목부(club) 기준으로 묶기
+    // → 배구부(남+여) 합반 세션도 배구부(남), 배구부(여) 시트에 각각 포함됨
+    const byClub = {}; // { 학생종목부: [ row, ... ] }
 
     dates.forEach(date => {
       Object.entries(all[date]).forEach(([session, clubs]) => {
-        Object.entries(clubs).forEach(([club, students]) => {
-          if (!byClub[club]) byClub[club] = [];
+        Object.entries(clubs).forEach(([sport, students]) => {
           Object.values(students).forEach(r => {
-            byClub[club].push({
-              date, session,
+            // 학생의 실제 종목부 사용 (없으면 세션 sport명 사용)
+            const clubKey = r.club || sport;
+            if (!byClub[clubKey]) byClub[clubKey] = [];
+            byClub[clubKey].push({
+              date, session, sport,
               grade: r.grade, class: r.class, number: r.number,
               name: r.name, duration: r.duration
             });
@@ -517,7 +520,7 @@
     if (!Object.keys(byClub).length) { alert('출석 기록이 없습니다.'); return; }
 
     const wb = XLSX.utils.book_new();
-    const header = ['날짜','시간대','학년','반','번호','이름','활동시간(분)'];
+    const header = ['날짜','시간대','세션종목','학년','반','번호','이름','활동시간(분)'];
 
     // 전체 합계 시트
     const allRows = [header];
@@ -544,10 +547,10 @@
         if (a.class !== b.class) return Number(a.class) - Number(b.class);
         return Number(a.number) - Number(b.number);
       }).forEach(r => {
-        rows.push([r.date, r.session, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.duration]);
+        rows.push([r.date, r.session, r.sport, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.duration]);
       });
       const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols'] = [12,10,8,6,8,10,12].map(w => ({wch:w}));
+      ws['!cols'] = [12,10,14,8,6,8,10,12].map(w => ({wch:w}));
       // 시트 이름 30자 제한
       const sheetName = club.length > 30 ? club.slice(0,30) : club;
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
