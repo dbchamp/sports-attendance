@@ -485,7 +485,7 @@
     document.getElementById('attendanceResult').innerHTML = '<div class="empty-msg">삭제됐습니다.</div>';
   }
 
-  // 엑셀 내보내기
+  // 엑셀 내보내기 (종목별 시트)
   async function exportExcel() {
     const from = document.getElementById('exportFrom').value;
     const to = document.getElementById('exportTo').value;
@@ -494,29 +494,65 @@
     const snap = await db.ref('/attendance').once('value');
     const all = snap.val() || {};
 
-    const rows = [['날짜','시간대','종목','학년','반','번호','이름','활동시간(분)']];
     const dates = Object.keys(all).filter(d => d >= from && d <= to).sort();
+
+    // 종목별로 데이터 묶기
+    const byClub = {}; // { 종목명: [ row, ... ] }
 
     dates.forEach(date => {
       Object.entries(all[date]).forEach(([session, clubs]) => {
         Object.entries(clubs).forEach(([club, students]) => {
-          Object.values(students).sort((a,b) => {
-            if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
-            if (a.class !== b.class) return Number(a.class) - Number(b.class);
-            return Number(a.number) - Number(b.number);
-          }).forEach(r => {
-            rows.push([date, session, club, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.duration]);
+          if (!byClub[club]) byClub[club] = [];
+          Object.values(students).forEach(r => {
+            byClub[club].push({
+              date, session,
+              grade: r.grade, class: r.class, number: r.number,
+              name: r.name, duration: r.duration
+            });
           });
         });
       });
     });
 
-    if (rows.length === 1) { alert('출석 기록이 없습니다.'); return; }
+    if (!Object.keys(byClub).length) { alert('출석 기록이 없습니다.'); return; }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [12,10,14,8,6,8,10,12].map(w => ({wch:w}));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '출석기록');
+    const header = ['날짜','시간대','학년','반','번호','이름','활동시간(분)'];
+
+    // 전체 합계 시트
+    const allRows = [header];
+    Object.entries(byClub).sort((a,b) => a[0].localeCompare(b[0])).forEach(([club, records]) => {
+      records.sort((a,b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+        if (a.class !== b.class) return Number(a.class) - Number(b.class);
+        return Number(a.number) - Number(b.number);
+      }).forEach(r => {
+        allRows.push([r.date, r.session, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.duration]);
+      });
+    });
+    const wsAll = XLSX.utils.aoa_to_sheet(allRows);
+    wsAll['!cols'] = [12,10,8,6,8,10,12].map(w => ({wch:w}));
+    XLSX.utils.book_append_sheet(wb, wsAll, '전체');
+
+    // 종목별 시트
+    Object.entries(byClub).sort((a,b) => a[0].localeCompare(b[0])).forEach(([club, records]) => {
+      const rows = [header];
+      records.sort((a,b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.grade !== b.grade) return Number(a.grade) - Number(b.grade);
+        if (a.class !== b.class) return Number(a.class) - Number(b.class);
+        return Number(a.number) - Number(b.number);
+      }).forEach(r => {
+        rows.push([r.date, r.session, r.grade+'학년', r.class+'반', r.number+'번', r.name, r.duration]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [12,10,8,6,8,10,12].map(w => ({wch:w}));
+      // 시트 이름 30자 제한
+      const sheetName = club.length > 30 ? club.slice(0,30) : club;
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+
     XLSX.writeFile(wb, `스포츠클럽_출석_${from}_${to}.xlsx`);
   }
 
